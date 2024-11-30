@@ -1,0 +1,500 @@
+#+TITLE: Welcome to velho - Your Home in the Cloud
+#+AUTHOR: Lukáš Hozda
+#+DATE: 2024
+
+* Welcome!
+Welcome to velho (ve.lho.sh), a high-performance AMD EPYC server running Artix Linux
+with the S6 init system. This is your new playground - a space where you can host,
+build, learn, and experiment with nearly complete freedom.
+
+** Philosophy
+The server operates on principles of:
+- Maximum freedom with minimum intervention
+- Trust and responsibility
+- Technical excellence without bureaucracy
+
+As your administrator, I follow a libertarian laissez-faire approach. You're free
+to use the server for almost anything, with just a few basic rules:
+
+** The Rules
+1. Don't be a cunt
+2. Don't intentionally interfere with other users' activities
+3. Don't run permanent CPU-intensive tasks (brief compilation spikes are fine,
+  crypto mining isn't)
+4. No illegal or degenerate content (but I won't judge tax evasion or creative
+   accounting, as a matter of fact, I encourage it)
+
+** Getting Help
+- Twitter: @LukasHozda
+- Just ask lmao
+
+* System Overview
+** Hardware
+A fairly AMD EPYC 7401P with 48 cores and 128GB RAM, ready for your projects:
+- Great for hosting services
+- Perfect for compilation and remote development
+- Ideal for learning linux and development
+- Excellent for long-running tasks
+
+** Base System
+- Artix Linux with S6 init
+- No root access for users (but lots of freedom otherwise!)
+- Docker available for containers
+- Nix-based package management
+- Your choice of shell: bash, sh, fish, zsh, elvish, or nushell
+- Pre-installed editors: neovim, vim, emacs, kakoune, nano, micro
+- Guix coming soon!
+
+* Getting Started
+** Package Management with Nix
+Nix is your primary tool for installing software. You don't need sudo - everything
+installs to your user profile!
+
+#+begin_example
+# Install a package
+nix profile install nixpkgs#ripgrep
+
+# Install multiple packages
+nix profile install nixpkgs#fd nixpkgs#bat nixpkgs#eza
+
+# List installed packages
+nix profile list
+#+end_example
+
+** Configuring Your Environment
+*** Shell Setup
+Change your shell to any of the available options:
+
+#+begin_example
+# List available shells
+chsh -l
+
+# Change your shell (example for fish)
+chsh -s /usr/bin/fish
+#+end_example
+
+*** Home Manager
+Home Manager lets you manage your entire user environment declaratively. Create
+=~/.config/home-manager/home.nix=:
+
+#+begin_src nix
+{ config, pkgs, ... }:
+
+{
+ home.username = "your-username";
+ home.homeDirectory = "/home/your-username";
+ home.stateVersion = "23.11";
+
+ # Packages to install
+ home.packages = with pkgs; [
+   ripgrep
+   fd
+   bat
+ ];
+
+ # Example: Configure fish shell
+ programs.fish = {
+   enable = true;
+   interactiveShellInit = ''
+     set -g fish_greeting ""
+   '';
+ };
+
+ # Let home-manager manage itself
+ programs.home-manager.enable = true;
+}
+#+end_src
+
+Apply your configuration:
+#+begin_example
+home-manager switch
+#+end_example
+
+
+If home-manager is not available, install it into your nix-profile:
+#+begin_example
+nix profile install nixpkgs#home-manager
+#+end_example
+
+*** Development Environments
+**** devenv
+Perfect for project-specific development environments:
+
+#+begin_src nix
+# devenv.nix
+{ pkgs, ... }:
+
+{
+ packages = [ pkgs.nodejs pkgs.yarn ];
+
+ enterShell = ''
+   echo "Node.js development environment ready!"
+ '';
+
+ processes.dev.exec = "yarn dev";
+}
+#+end_src
+
+Use it:
+#+begin_example
+devenv shell    # Enter the environment
+devenv up       # Start defined processes
+#+end_example
+
+**** direnv
+Automatically load environment when entering directories:
+
+#+begin_example
+# .envrc
+use devenv
+#+end_example
+
+First time setup:
+#+begin_example
+direnv allow
+#+end_example
+
+** Running Services with Hiisi
+Hiisi is your daemon manager - it remembers environment variables, handles logging,
+and can restart crashed services.
+
+#+begin_example
+# Start a service (inherits current environment!)
+hiisi run --restart ./my_server --port 8080
+
+# From within a nix-shell or devenv:
+nix-shell --run 'hiisi run --restart yarn start'
+
+# List running services
+hiisi status
+
+# View logs
+hiisi logs <id>
+
+# Stop a service
+hiisi stop <id>
+#+end_example
+
+*** Port Management
+Allocate ports for your services:
+
+#+begin_example
+# Get a random port
+hiisi port allocate
+
+# Request specific port
+hiisi port allocate 8080
+
+# List your ports
+hiisi port lookup
+
+# Free a port
+hiisi port free 8080
+#+end_example
+
+** Web Hosting
+*** Domain Names
+You can use any subdomain under lho.sh (except lho.sh and ve.lho.sh):
+- your-project.lho.sh
+- cool-app.lho.sh
+- anything.you.want.lho.sh
+
+*** Caddy Configuration
+Add your domain to =Caddyfile.in=:
+
+#+begin_src caddyfile
+https://your-app.lho.sh {
+   reverse_proxy localhost:8080  # Use your allocated port
+}
+#+end_src
+
+The configuration reloads automatically every minute.
+
+*** Example: Complete Web Service Setup
+1. Allocate a port:
+#+begin_example
+$ hiisi port allocate
+Port 8080 allocated
+#+end_example
+
+2. Add to Caddyfile.in:
+#+begin_src caddyfile
+https://myapp.lho.sh {
+   reverse_proxy localhost:8080
+}
+#+end_src
+
+3. Start your service:
+#+begin_example
+$ hiisi run --restart npm start
+Process 42 started
+#+end_example
+
+Your app is now available at https://myapp.lho.sh!
+
+* Common Use Cases
+** Development Server
+Example of a development environment with hot-reload:
+
+#+begin_src nix
+# devenv.nix
+{ pkgs, ... }: {
+ packages = with pkgs; [
+   nodejs_20
+   yarn
+   postgresql
+ ];
+
+ languages.typescript.enable = true;
+
+ services.postgres.enable = true;
+
+ processes = {
+   # Frontend
+   next.exec = "yarn dev";
+   # Backend
+   api.exec = "yarn api:dev";
+ };
+}
+#+end_src
+
+Run it with hiisi:
+#+begin_example
+$ hiisi port allocate 3000  # frontend
+$ hiisi port allocate 4000  # backend
+$ devenv up                 # start postgres
+$ hiisi run --restart "devenv shell yarn dev"
+$ hiisi run --restart "devenv shell yarn api:dev"
+#+end_example
+
+** Long-Running Tasks
+Perfect for data processing, training, or any task that needs to persist:
+
+#+begin_example
+# Start a long computation in tmux/screen
+$ python3 -c "
+import time
+while True:
+   print('Working...')
+   time.sleep(1)
+" > output.log 2>&1 &
+
+# Or better, use hiisi:
+$ hiisi run --restart "python3 long_task.py"
+Process 123 started
+
+# Check progress anytime:
+$ hiisi logs 123
+#+end_example
+
+** Database Servers
+Run your development databases:
+
+#+begin_src nix
+# devenv.nix
+{ pkgs, ... }: {
+ services.postgres = {
+   enable = true;
+   listen_addresses = "127.0.0.1";
+   port = 5432;  # Use your allocated port!
+ };
+
+ services.redis = {
+   enable = true;
+   bind = "127.0.0.1";
+   port = 6379;  # Use your allocated port!
+ };
+}
+#+end_src
+
+Then run via hiisi:
+#+begin_example
+$ hiisi port allocate 5432
+$ hiisi port allocate 6379
+$ hiisi run --restart "devenv up"
+#+end_example
+
+** CI/CD Environment
+Use for building and testing:
+
+#+begin_src nix
+# devenv.nix
+{ pkgs, ... }: {
+ packages = with pkgs; [
+   act         # Run GitHub Actions locally
+   docker-cli
+   docker-compose
+ ];
+
+ # Ensure correct permissions
+ enterShell = ''
+   export DOCKER_HOST="unix:///var/run/docker.sock"
+ '';
+}
+#+end_src
+
+Run your CI pipeline:
+#+begin_example
+$ devenv shell
+$ act -j build
+#+end_example
+
+** Learning Environment
+Perfect for experimenting with new technologies:
+
+#+begin_src nix
+# devenv.nix
+{ pkgs, ... }: {
+ packages = with pkgs; [
+   # Languages
+   go
+   rust-analyzer
+   python311
+   nodejs_20
+
+   # Tools
+   httpie
+   jq
+   k6  # load testing
+ ];
+
+ languages = {
+   rust.enable = true;
+   go.enable = true;
+ };
+}
+#+end_src
+
+** Multiple Services Example
+Complex setup with multiple interconnected services:
+
+#+begin_example
+# Allocate ports
+$ hiisi port allocate 8080  # API
+$ hiisi port allocate 3000  # Frontend
+$ hiisi port allocate 5432  # PostgreSQL
+$ hiisi port allocate 6379  # Redis
+
+# Start database services
+$ hiisi run --restart "devenv up"
+
+# Start API server
+$ hiisi run --restart "npm run api"
+
+# Start frontend
+$ hiisi run --restart "npm run frontend"
+
+# Add to Caddyfile.in
+https://api.myapp.lho.sh {
+   reverse_proxy localhost:8080
+}
+
+https://myapp.lho.sh {
+   reverse_proxy localhost:3000
+}
+#+end_example
+
+* Pro Tips
+- Use direnv to automatically load project environments
+- Combine devenv with hiisi to maintain consistent environments
+- Keep your services organized (suggested: ~/services/)
+- Use hiisi's logs command to debug issues
+- Remember: hiisi preserves the environment where you started the service
+- Check hiisi status regularly to ensure your services are running
+- Use --restart for services that should recover from crashes
+- Don't use --restart if you are offloading something into the background that is not a permanent task
+
+* Best Practices & Community
+** Resource Usage
+While there are no strict limits, be considerate:
+- Compilation spikes are fine
+- Brief CPU-intensive tasks are okay
+- Long-term CPU hammering isn't cool
+- If in doubt, just ask!
+
+** Security & Safety
+- Keep your ssh keys secure
+- Don't share your access
+- Use allocated ports only
+- Remember: it's a trust-based system
+
+** Backups
+- Currently, backups are your responsibility
+- Coming soon: 10TB network drive with user partitions
+- Consider using git for code
+- Document your service configurations
+
+** Being a Good Citizen
+*** Do
+- Experiment freely
+- Learn new things
+- Build cool stuff
+- Share knowledge
+- Ask for help when stuck
+
+*** Don't
+- Hog resources unnecessarily
+- Interfere with others' services
+- Run cryptocurrency miners
+- Host sketchy content
+
+** Common Patterns
+*** Service Organization
+#+begin_example
+~/services/
+ myapp/
+   devenv.nix
+   docker-compose.yml
+   .envrc
+   README.md  # Document your setup!
+#+end_example
+
+*** Environment Management
+- Use devenv for reproducible environments
+- Use direnv for automatic environment loading
+- Use home-manager for persistent configurations
+- Use hiisi for service management
+
+*** Domain Management
+- Keep Caddyfile.in entries organized
+- Comment your reverse_proxy configurations
+- Use meaningful subdomain names
+- Test your services before exposing them
+
+** Troubleshooting
+If something goes wrong:
+1. Check hiisi status
+2. Review hiisi logs
+3. Verify port allocations
+4. Check Caddy access
+5. Ask for help!
+
+* Future Plans
+** Coming Soon
+- Guix package manager support
+- 10TB network storage
+- More development tools
+- System improvements
+
+** Your Input Matters
+- Suggestions welcome
+- Feature requests considered
+- Community-driven improvements
+
+* Final Notes
+Remember, velho is:
+- Your professional playground
+- A learning environment
+- A hosting platform
+- A development powerhouse
+
+But most importantly, it's a shared space where we trust each other to:
+- Be responsible
+- Be considerate
+- Be creative
+- Not be a cunt :-)
+
+Need help? Found a bug? Want to suggest an improvement?
+Tweet @LukasHozda or ask other users.
+
+Welcome aboard, nigga. :)
